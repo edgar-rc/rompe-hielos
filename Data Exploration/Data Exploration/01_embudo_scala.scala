@@ -422,6 +422,70 @@ display(embudo.select(col(C_ETAPA), $"orden", $"llegan", $"pasan", $"pierden", $
 
 // COMMAND ----------
 
+// ms_total = suma de ms_on_step de todos los intentos de esa etapa para ese cliente.
+val metricasEtapa = vista
+  .groupBy(col(C_ETAPA))
+  .agg(
+    min(col(C_ETAPA_N)).alias("orden"),
+    countDistinct(col(KEY)).alias("clientes"),
+    round(percentile_approx(col("ms_total"), lit(0.5),  lit(10000)) / 1000.0, 1).alias("seg_mediana"),
+    round(percentile_approx(col("ms_total"), lit(0.95), lit(10000)) / 1000.0, 1).alias("seg_p95"),
+    round(avg(col("n_intentos")), 3).alias("intentos_promedio"),
+    round(sum(when(col("n_intentos") > 1, lit(1.0)).otherwise(lit(0.0))) / count(lit(1)) * 100, 2).alias("pct_con_reintento")
+  )
+  .orderBy($"orden")
+
+display(metricasEtapa)
+
+// COMMAND ----------
+
+// Hasta donde llego cada cliente: la etapa mas avanzada que completo con exito.
+// etapa_max = 0 significa que no completo ni la primera.
+val etapaAlcanzada = vista
+  .filter(col("exito"))
+  .groupBy(col(KEY))
+  .agg(max(col(C_ETAPA_N)).alias("etapa_max"))
+
+val activacionPorEtapa = labels
+  .select(col(KEY), col(C_TARGET))
+  .join(etapaAlcanzada, Seq(KEY), "left")
+  .withColumn("etapa_max", coalesce(col("etapa_max").cast("long"), lit(0L)))
+  .groupBy($"etapa_max")
+  .agg(
+    count(lit(1)).alias("clientes"),
+    sum(col(C_TARGET).cast("double")).alias("activados")
+  )
+  .withColumn("pct_activacion", round($"activados" / $"clientes" * 100, 2))
+  .orderBy($"etapa_max")
+
+display(activacionPorEtapa)
+
+// COMMAND ----------
+
+val segundoEmbudo = labels
+  .groupBy(col("completed_onboarding"))
+  .agg(
+    count(lit(1)).alias("clientes"),
+    sum(col(C_TARGET).cast("double")).alias("activados")
+  )
+  .withColumn("nunca_transacciona", $"clientes" - $"activados")
+  .withColumn("pct_activacion", round($"activados" / $"clientes" * 100, 2))
+  .orderBy($"completed_onboarding".desc)
+
+display(segundoEmbudo)
+
+// COMMAND ----------
+
+val filaCompletos = segundoEmbudo.filter(col("completed_onboarding") === true).head()
+val completos     = filaCompletos.getAs[Long]("clientes").toDouble
+val activados     = filaCompletos.getAs[Double]("activados")
+
+println(f"Completan el onboarding: ${completos.toLong}%,d")
+println(f"De esos, se activan:     ${activados.toLong}%,d  (${activados / completos * 100}%.1f%%)")
+println(f"Nunca transaccionan:     ${(completos - activados).toLong}%,d  (${(1 - activados / completos) * 100}%.1f%%)")
+
+// COMMAND ----------
+
 // MAGIC %md
 // MAGIC ## 8 · Handoff
 // MAGIC
