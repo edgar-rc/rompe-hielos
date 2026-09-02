@@ -1,0 +1,129 @@
+08:53:20  INFO    Onboarding funnel and activation pipeline
+08:53:20  INFO    Python 3.10.12 on Linux-6.8.0-136-generic-aarch64-with-glibc2.35
+08:53:20  INFO    pandas 2.3.3 / numpy 2.2.6
+08:53:20  INFO    Config: /sessions/friendly-focused-turing/mnt/rompe-hielos/config/activation_profile.yaml (thresholds version 1.0.0)
+08:53:20  INFO    
+08:53:20  INFO    ==============================================================================
+08:53:20  INFO      1. Ingest
+08:53:20  INFO    ==============================================================================
+08:53:21  INFO    Source tier: csv (/tmp/hk/csv)
+08:53:21  INFO      customers            260,000 rows   9 cols
+08:53:21  INFO      onboarding_events  1,386,264 rows  10 cols
+08:53:21  INFO      activation_labels    260,000 rows   6 cols
+08:53:21  INFO    
+08:53:21  INFO    ==============================================================================
+08:53:21  INFO      2. State machine - collapse retries to customer grain
+08:53:21  INFO    ==============================================================================
+08:53:21  INFO    Event rows per customer: 5.33 (a row is not a person)
+08:53:21  INFO    Step 4 selfie_liveness: 292,307 attempt rows -> 190,642 distinct customers
+08:53:22  INFO    Customer-step view: 1,284,599 rows from 1,386,264 event rows (260,000 customers)
+08:53:23  INFO    Customer state view: 260,000 customers, 115,192 completed (44.305%)
+08:53:23  INFO    
+08:53:23  INFO    ==============================================================================
+08:53:23  INFO      3. Funnel - stage by stage, customer level
+08:53:23  INFO    ==============================================================================
+08:53:23  INFO    
+08:53:23  INFO      step 1  phone_verification   entering 260,000  abandoned 12,691  stage rate   4.88%  cum reach  95.12%
+08:53:23  INFO      step 2  personal_data        entering 247,309  abandoned 20,038  stage rate   8.10%  cum reach  87.41%
+08:53:23  INFO      step 3  id_document_upload   entering 227,271  abandoned 36,629  stage rate  16.12%  cum reach  73.32%
+08:53:23  INFO      step 4  selfie_liveness      entering 190,642  abandoned 65,129  stage rate  34.16%  cum reach  48.27%
+08:53:23  INFO      step 5  address              entering 125,513  abandoned  6,841  stage rate   5.45%  cum reach  45.64%
+08:53:23  INFO      step 6  terms_acceptance     entering 118,672  abandoned  3,480  stage rate   2.93%  cum reach  44.30%
+08:53:23  INFO      step 7  account_created      entering 115,192  abandoned      0  stage rate   0.00%  cum reach  44.30%
+08:53:23  INFO    
+08:53:23  INFO      Largest drop: step 4 selfie_liveness - 65,129 customers lost, 44.98% of all abandonment
+08:53:23  INFO      Onboarding completion: 44.305% (baseline 44.3%)
+08:53:23  INFO    
+08:53:23  INFO    ==============================================================================
+08:53:23  INFO      4. Reconcile the state machine against activation_labels
+08:53:23  INFO    ==============================================================================
+08:53:23  INFO      completed_onboarding disagreements: 0
+08:53:23  INFO      max_step_reached vs steps_completed disagreements: 0
+08:53:23  INFO      activated_30d overall:            19.240% (baseline 19.2%)
+08:53:23  INFO      activation among completers:      43.427%
+08:53:23  INFO      completed but never activated:    65,168 customers
+08:53:23  INFO      activated without completing:      0 (must be 0)
+08:53:23  INFO    
+08:53:23  INFO    ==============================================================================
+08:53:23  INFO      5. Features - leakage-safe set
+08:53:23  INFO    ==============================================================================
+08:53:23  INFO    Feature table: 260,000 rows, 27 columns
+08:53:23  INFO      Forbidden list has 17 entries; none reaches the design matrix.
+08:53:23  INFO    
+08:53:23  INFO    ==============================================================================
+08:53:23  INFO      6. Score the scored population
+08:53:23  INFO    ==============================================================================
+08:53:23  INFO      Scored population: 115,192 of 260,000 signups (44.305%)
+08:53:23  INFO      Non-completers excluded: 144,808 - they activate at 0% by construction
+08:53:23  INFO      No --scores supplied; using the transparent pipeline baseline.
+08:53:23  INFO      Temporal split at 2026-06-25: train 91,818 (43.575% act) / test 23,374 (42.842% act)
+08:53:23  INFO      Design matrix: 34 features
+08:53:23  INFO    
+08:53:23  INFO      Baselines and model, evaluated on the temporal test set:
+08:53:23  INFO      constant (prevalence)              ROC-AUC 0.5000  PR-AUC 0.4284  Brier 0.2449
+08:53:23  INFO      channel lookup                     ROC-AUC 0.6221  PR-AUC 0.5162  Brier 0.2335
+08:53:25  INFO      logistic regression (pipeline)     ROC-AUC 0.6455  PR-AUC 0.5636  Brier 0.2295
+08:53:25  INFO    
+08:53:25  INFO      PR-AUC floor is test-set prevalence, 0.4284 - not 0.5.
+08:53:25  INFO    
+08:53:25  INFO      Rank quality on the test set:
+08:53:25  INFO        decile 0  predicted 0.239  observed 0.238  lift 0.56  cum. non-activators  13.3%
+08:53:25  INFO        decile 1  predicted 0.295  observed 0.282  lift 0.66  cum. non-activators  25.9%
+08:53:25  INFO        decile 2  predicted 0.338  observed 0.319  lift 0.74  cum. non-activators  37.8%
+08:53:25  INFO        decile 3  predicted 0.374  observed 0.371  lift 0.87  cum. non-activators  48.8%
+08:53:25  INFO        decile 4  predicted 0.411  observed 0.408  lift 0.95  cum. non-activators  59.2%
+08:53:25  INFO        decile 5  predicted 0.449  observed 0.451  lift 1.05  cum. non-activators  68.8%
+08:53:25  INFO        decile 6  predicted 0.485  observed 0.484  lift 1.13  cum. non-activators  77.8%
+08:53:25  INFO        decile 7  predicted 0.528  observed 0.525  lift 1.22  cum. non-activators  86.1%
+08:53:25  INFO        decile 8  predicted 0.574  observed 0.555  lift 1.30  cum. non-activators  93.9%
+08:53:25  INFO        decile 9  predicted 0.645  observed 0.651  lift 1.52  cum. non-activators 100.0%
+08:53:25  INFO      wrote model_decile_table.csv                    10 rows
+08:53:25  INFO    
+08:53:25  INFO    ==============================================================================
+08:53:25  INFO      7. Activation profile for MVP 2
+08:53:25  INFO    ==============================================================================
+08:53:25  INFO      as_of = 2026-08-01 00:06:49
+08:53:25  INFO    Activation profile: 115,192 customers
+08:53:25  INFO      LOWER    33.13%  (38,161 customers)
+08:53:25  INFO      MIDDLE   35.24%  (40,595 customers)
+08:53:25  INFO      UPPER    31.63%  (36,436 customers)
+08:53:25  INFO    
+08:53:25  INFO      Band                customers    share   mean score   observed act.   vs avg
+08:53:25  INFO      LOWER                38,161   33.13%      0.2989          29.51%    0.68x
+08:53:25  INFO      MIDDLE               40,595   35.24%      0.4347          43.22%    1.00x
+08:53:25  INFO      UPPER                36,436   31.63%      0.5806          58.23%    1.34x
+08:53:25  INFO    
+08:53:25  INFO      Timing states at this as_of date:
+08:53:25  INFO        PRE_WINDOW       1,868  ( 1.62%)
+08:53:25  INFO        IN_WINDOW        4,998  ( 4.34%)
+08:53:25  INFO        LATE             2,566  ( 2.23%)
+08:53:25  INFO        DORMANT        105,760  (91.81%)
+08:53:25  INFO    
+08:53:25  INFO      This is a single-snapshot backfill, so most accounts are far past
+08:53:25  INFO      day 14 and land in DORMANT. In production the pipeline runs daily
+08:53:25  INFO      and IN_WINDOW is a rolling 8 days of account creations; the
+08:53:25  INFO      steady-state figure below is the one that sizes the MVP.
+08:53:25  INFO    
+08:53:25  INFO      Treatment states:
+08:53:25  INFO        SUPPRESSED           110,426  (95.86%)
+08:53:25  INFO        COACH                  2,703  ( 2.35%)
+08:53:25  INFO        COACH_INCENTIVE        2,063  ( 1.79%)
+08:53:25  INFO    
+08:53:25  INFO      Primary MVP 2 target: MIDDLE x IN_WINDOW
+08:53:25  INFO        at this as_of snapshot:            1,404 customers
+08:53:25  INFO        steady state, sample scale:        1,435 in the window on any given day
+08:53:25  INFO        steady state, real inflow (x8.35):  11,985 customers
+08:53:25  INFO    
+08:53:25  INFO    ==============================================================================
+08:53:25  INFO      8. Persist views
+08:53:25  INFO    ==============================================================================
+08:53:25  INFO      wrote funnel_stage_view.csv                      7 rows
+08:53:27  INFO      wrote customer_step_view.csv             1,284,599 rows
+08:53:28  INFO      wrote customer_state_view.csv              260,000 rows
+08:53:29  INFO      wrote customer_feature_view.csv            260,000 rows
+08:53:29  INFO      wrote customer_activation_profile.csv      115,192 rows
+08:53:29  INFO      wrote activation_profile_band_summary.csv         3 rows
+08:53:29  INFO      wrote model_metrics.csv                          3 rows
+08:53:29  INFO      wrote run_manifest.json
+08:53:29  INFO    
+08:53:29  INFO    Done in 9.3s

@@ -145,3 +145,31 @@ hs_err_pid*
 
 # End of https://www.toptal.com/developers/gitignore/api/intellij,sbt,scalapayload.json
 payload.json
+
+# ---------------------------------------------------------------------------
+# Onboarding funnel and activation challenge
+# ---------------------------------------------------------------------------
+
+# Python. This repository's original ignore rules were written for a Scala/JVM
+# project and cover none of this.
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.venv/
+venv/
+.pytest_cache/
+
+# Source data is not committed: ~22 MB of synthetic Parquet. Anyone can
+# reproduce it byte for byte from the seeded generator - see README.md.
+/data/
+
+# Generated views are a function of the source data plus the pipeline, so they
+# are reproducible and do not belong in git.
+/pipeline/out/
+
+# Execution evidence, however, IS part of the deliverable. These rules override
+# the blanket `*.log` above, which would otherwise swallow the run logs.
+!/pipeline/evidence/
+!/pipeline/evidence/**
+!/analytics/quality/evidence/
+!/analytics/quality/evidence/**

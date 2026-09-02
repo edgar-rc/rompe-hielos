@@ -1,0 +1,4 @@
+model,roc_auc,pr_auc,brier
+constant (prevalence),0.5,0.428425,0.244931
+channel lookup,0.622065,0.516237,0.233467
+logistic regression (pipeline),0.645516,0.563596,0.229462

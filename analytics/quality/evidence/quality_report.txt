@@ -1,0 +1,66 @@
+
+====================================================================================================
+  Quality controls - source tier csv (/tmp/hk/csv)
+  Config activation_profile.yaml, thresholds version 1.0.0
+====================================================================================================
+
+[  ok  ] integrity      customers.customer_id unique                 260,000 distinct
+[  ok  ] integrity      activation_labels.customer_id unique         260,000 distinct
+[  ok  ] integrity      events.event_id unique                       1,386,264 rows
+[  ok  ] integrity      events FK -> customers                       260,000 referenced
+[  ok  ] integrity      labels FK -> customers                       1:1 with customers
+[  ok  ] volume         customers row count                          260,000
+[  ok  ] volume         activation_labels row count                  260,000
+[  ok  ] nulls          customers has zero nulls                     0 nulls across 9 columns
+[  ok  ] nulls          onboarding_events has zero nulls             0 nulls across 10 columns
+[  ok  ] nulls          labels nulls confined to leakage columns     non-leak columns: 0 nulls
+[  ok  ] nulls          days_to_first_transaction nulls are structural 209,976 nulls = 260,000 - 50,024 activated
+[  ok  ] nulls          first_transaction_ts nulls are structural    209,976 nulls = 260,000 - 50,024 activated
+[  ok  ] ranges         signup_ts inside the stated window           2026-02-01 00:00:59 .. 2026-07-31 23:56:56
+[  ok  ] ranges         age within [18, 78]                          18 .. 78
+[  ok  ] ranges         step_number within [1, 7]                    
+[  ok  ] ranges         ms_on_step non-negative                      
+[  ok  ] ranges         status in {completed, abandoned, retry}      ['abandoned', 'completed', 'retry']
+[  ok  ] target         onboarding completion ~ 44.3%                44.305%
+[  ok  ] target         activated_30d ~ 19.2%                        19.240%
+[  ok  ] censoring      monthly activation flat (no right-censoring) spread 0.64pp across 6 months
+
+[  ok  ] leakage        days_to_first_transaction null iff not activated activated-but-null 0, not-activated-but-filled 0
+[  ok  ] leakage        first_transaction_ts null iff not activated  activated-but-null 0, not-activated-but-filled 0
+[  ok  ] leakage        no activation without completing onboarding  0 violations
+[  ok  ] leakage        completed_onboarding == (steps_completed == 7) the two columns are the same fact
+[  ok  ] leakage        forbidden list covers both total-leak columns 17 entries on the list
+
+[  ok  ] dedup          step view covers every customer              260,000 of 260,000
+[  ok  ] dedup          one row per customer-step                    
+[  ok  ] dedup          retries collapsed, not dropped               sum(attempts) 1,386,264 == 1,386,264 event rows
+[  ok  ] dedup          attempt-level != customer-level at step 4    attempt 22.28% vs customer 34.16%
+[  ok  ] funnel         step 4 stage abandonment ~ 34.16%            34.16%
+[  ok  ] funnel         largest drop is step 4                       65,129 customers lost
+[  ok  ] funnel         cumulative reach reproduces the 44.3% baseline 44.305%
+[  ok  ] funnel         state machine agrees with labels on completion 0 disagreements
+[  ok  ] funnel         max_step_reached agrees with steps_completed 0 disagreements
+[  ok  ] funnel         no customer left without a terminal state    7 distinct terminal states
+
+[  ok  ] profile        customer_id unique                           115,192 rows
+[  ok  ] profile        population is the completers only            115,192 of 260,000 signups
+[  ok  ] profile        score within [0, 1], no nulls                0.118 .. 0.773
+[  ok  ] profile        no forbidden column in the output table      clean
+[  ok  ] profile        thresholds_version stamped                   1.0.0
+[  ok  ] profile        activation strictly increasing across bands  LOWER 29.51%  MIDDLE 43.22%  UPPER 58.23%
+[  ok  ] profile        LOWER share within +/-2pp                    33.13% vs expected 33.4% (dev 0.27pp); baseline scorer, expectation is model-specific
+[ warn ] profile        MIDDLE share within +/-2pp                   35.24% vs expected 38.5% (dev 3.26pp); baseline scorer, expectation is model-specific
+[ warn ] profile        UPPER share within +/-2pp                    31.63% vs expected 28.1% (dev 3.53pp); baseline scorer, expectation is model-specific
+[  ok  ] holdout        overall share on target                      20.12% vs 20%
+[  ok  ] holdout        LOWER share on target                        19.89%
+[  ok  ] holdout        MIDDLE share on target                       20.36%
+[  ok  ] holdout        UPPER share on target                        20.08%
+[  ok  ] guardrail      no incentive reaches ['UPPER']               0 breaches
+[  ok  ] guardrail      every holdout customer is suppressed         
+[  ok  ] guardrail      every suppression carries a reason           
+
+====================================================================================================
+  49 passed, 2 warning(s), 0 failure(s)
+    warn: MIDDLE share within +/-2pp - 35.24% vs expected 38.5% (dev 3.26pp); baseline scorer, expectation is model-specific
+    warn: UPPER share within +/-2pp - 31.63% vs expected 28.1% (dev 3.53pp); baseline scorer, expectation is model-specific
+====================================================================================================

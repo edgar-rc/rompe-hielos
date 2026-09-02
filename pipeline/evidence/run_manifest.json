@@ -1,0 +1,42 @@
+{
+  "run_at": "2026-09-02T14:53:29+00:00",
+  "elapsed_seconds": 9.3,
+  "python": "3.10.12",
+  "pandas": "2.3.3",
+  "numpy": "2.2.6",
+  "source_tier": "csv",
+  "source_location": "/tmp/hk/csv",
+  "thresholds_version": "1.0.0",
+  "score_source": "pipeline_baseline_logreg",
+  "as_of": "2026-08-01 00:06:49",
+  "row_counts": {
+    "customers": 260000,
+    "onboarding_events": 1386264,
+    "activation_labels": 260000,
+    "customer_step_view": 1284599,
+    "customer_state_view": 260000,
+    "customer_activation_profile": 115192
+  },
+  "headline": {
+    "onboarding_completion": 0.44305,
+    "activated_30d": 0.1924,
+    "activation_among_completers": 0.43427,
+    "largest_drop_step": 4,
+    "largest_drop_stage_rate": 0.34163,
+    "largest_drop_customers": 65129
+  },
+  "band_distribution": {
+    "LOWER": 0.33128,
+    "MIDDLE": 0.35241,
+    "UPPER": 0.31631
+  },
+  "outputs": [
+    "funnel_stage_view.csv",
+    "customer_step_view.csv",
+    "customer_state_view.csv",
+    "customer_feature_view.csv",
+    "customer_activation_profile.csv",
+    "activation_profile_band_summary.csv",
+    "model_metrics.csv"
+  ]
+}
