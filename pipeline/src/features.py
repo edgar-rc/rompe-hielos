@@ -28,6 +28,7 @@ observable by then. A funnel drop-off model could only use the signup block.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
@@ -101,7 +102,7 @@ def build_features(
     present = [c for c in forbidden if c in df.columns and c not in ("customer_id", "signup_ts")]
     # `completed_onboarding` and `max_step_reached` are carried here on purpose:
     # the population filter needs them. They are stripped by
-    # `feature_matrix_columns` before anything is fitted.
+    # `fit_feature_encoder` before anything is fitted.
     keep_for_filtering = {"completed_onboarding", "max_step_reached"}
     to_drop = [c for c in present if c not in keep_for_filtering]
     if to_drop:
@@ -122,44 +123,107 @@ NUMERIC_FEATURES = [
 BOOLEAN_FEATURES = ["prev_bank_relationship", "referred_by_customer", "is_legacy_version"]
 CATEGORICAL_FEATURES = ["acquisition_channel", "device_os", "state"]
 
+# Carried on the feature table for the population filter / temporal split.
+# Not features. The encoder must still refuse everything else on the
+# forbidden list - that is the last line of defence before a fit.
+_ALLOWED_ON_FRAME = frozenset({
+    "customer_id", "signup_ts", "completed_onboarding", "max_step_reached",
+})
 
-def feature_matrix(df: pd.DataFrame, forbidden: list[str]) -> tuple[np.ndarray, list[str]]:
-    """Encode the feature table into a numeric design matrix.
 
-    Standardises numerics and one-hot encodes categoricals with the first level
-    dropped. Raises if any forbidden column reaches this point - the last line
-    of defence before anything is fitted.
+@dataclass(frozen=True)
+class FeatureEncoder:
+    """Mean/std and category levels fitted on a reference frame.
+
+    Fit on the temporal train set and apply unchanged to the test set and
+    to the full scored population, so evaluation does not see future
+    scale or vocabulary.
     """
-    breach = sorted(set(forbidden) & set(df.columns) - {"signup_ts", "customer_id"})
-    breach = [c for c in breach if c not in ("completed_onboarding", "max_step_reached")]
+
+    numeric: tuple[str, ...]
+    mean: np.ndarray
+    std: np.ndarray
+    boolean: tuple[str, ...]
+    cat_levels: dict[str, tuple[str, ...]]
+    names: tuple[str, ...]
+
+
+def _assert_no_forbidden(df: pd.DataFrame, forbidden: list[str]) -> None:
+    breach = sorted((set(forbidden) & set(df.columns)) - _ALLOWED_ON_FRAME)
     if breach:
         raise ValueError(f"Forbidden columns reached the design matrix: {breach}")
 
-    blocks, names = [], []
 
-    numeric = [c for c in NUMERIC_FEATURES if c in df.columns]
+def fit_feature_encoder(df: pd.DataFrame, forbidden: list[str]) -> FeatureEncoder:
+    """Fit standardisation and one-hot levels on `df` only."""
+    _assert_no_forbidden(df, forbidden)
+    if df.empty:
+        raise ValueError("Cannot fit a feature encoder on an empty frame.")
+
+    numeric = tuple(c for c in NUMERIC_FEATURES if c in df.columns)
     if numeric:
-        X = df[numeric].astype(float).to_numpy()
+        X = df[list(numeric)].astype(float).to_numpy()
         mean = X.mean(axis=0)
         std = X.std(axis=0)
-        std[std == 0] = 1.0
-        blocks.append((X - mean) / std)
-        names += numeric
+        std = np.where(std == 0, 1.0, std)
+    else:
+        mean = np.empty(0)
+        std = np.empty(0)
 
-    boolean = [c for c in BOOLEAN_FEATURES if c in df.columns]
-    if boolean:
-        blocks.append(df[boolean].astype(float).to_numpy())
-        names += boolean
+    boolean = tuple(c for c in BOOLEAN_FEATURES if c in df.columns)
 
+    cat_levels: dict[str, tuple[str, ...]] = {}
     for col in CATEGORICAL_FEATURES:
         if col not in df.columns:
             continue
-        levels = sorted(df[col].dropna().unique().tolist())[1:]  # drop first level
-        if not levels:
-            continue
+        levels = tuple(sorted(df[col].dropna().unique().tolist())[1:])
+        if levels:
+            cat_levels[col] = levels
+
+    names = (
+        list(numeric)
+        + list(boolean)
+        + [f"{col}={level}" for col, levels in cat_levels.items() for level in levels]
+    )
+    return FeatureEncoder(
+        numeric=numeric,
+        mean=mean,
+        std=std,
+        boolean=boolean,
+        cat_levels=cat_levels,
+        names=tuple(names),
+    )
+
+
+def transform_features(df: pd.DataFrame, encoder: FeatureEncoder) -> np.ndarray:
+    """Apply a previously fitted encoder. Unseen category levels become the
+    dropped reference (all-zero dummy row), not a new column.
+    """
+    blocks = []
+
+    if encoder.numeric:
+        X = df[list(encoder.numeric)].astype(float).to_numpy()
+        blocks.append((X - encoder.mean) / encoder.std)
+
+    if encoder.boolean:
+        blocks.append(df[list(encoder.boolean)].astype(float).to_numpy())
+
+    for col, levels in encoder.cat_levels.items():
         blocks.append(
             np.column_stack([(df[col] == level).astype(float).to_numpy() for level in levels])
         )
-        names += [f"{col}={level}" for level in levels]
 
-    return np.column_stack(blocks), names
+    if not blocks:
+        raise ValueError("Feature encoder has no columns to transform.")
+    return np.column_stack(blocks)
+
+
+def feature_matrix(df: pd.DataFrame, forbidden: list[str]) -> tuple[np.ndarray, list[str]]:
+    """Fit and transform on the same frame.
+
+    For a temporal split, call `fit_feature_encoder` on train and
+    `transform_features` on every subsequent frame. Fitting on the
+    scored population would leak test-set scale into training.
+    """
+    encoder = fit_feature_encoder(df, forbidden)
+    return transform_features(df, encoder), list(encoder.names)
