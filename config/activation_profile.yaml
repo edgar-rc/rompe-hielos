@@ -1,0 +1,194 @@
+# Activation Profile configuration — MVP 2 (First-Use Activation Coach)
+# Contract: docs/activation-profile-spec.md
+#
+# Every targeting threshold lives here. Changing targeting is a config change
+# with a version stamp, never a code change. The version below is written into
+# every row of customer_activation_profile as `thresholds_version`.
+
+version: "1.0.0"
+model_version: "model_b_activation_propensity:1.0.0"
+
+# ---------------------------------------------------------------------------
+# Risk bands — fixed probability thresholds.
+# Placed at low-density dips in the predicted-probability distribution
+# (observed range 0.190 - 0.732, median 0.430) so that a small change in a
+# score does not flip a customer between bands.
+# Deliberately NOT population terciles: under terciles a customer's band
+# depends on the composition of the scoring batch.
+# ---------------------------------------------------------------------------
+bands:
+  lower_upper_bound: 0.369     # p <  0.369            -> LOWER
+  middle_upper_bound: 0.500    # 0.369 <= p <  0.500   -> MIDDLE
+                               # p >= 0.500            -> UPPER
+
+  expected_distribution:       # enforced by quality checks, tolerance below
+    LOWER: 0.334
+    MIDDLE: 0.385
+    UPPER: 0.281
+  distribution_tolerance_pp: 2.0
+
+  expected_activation_rate:    # test-set observed, for monotonicity check
+    LOWER: 0.295
+    MIDDLE: 0.431
+    UPPER: 0.584
+
+# ---------------------------------------------------------------------------
+# Timing states — days since account creation.
+# Activation timing: median day 5; peak on days 2-3 (~11% each, against 6.6%
+# on day 0); 70.9% activated by day 7; 93.3% by day 14; 99.6% by day 28.
+# Shape is segment-invariant (referral 65.0% vs paid_social 64.8% in week 1),
+# so the timing axis is shared across all bands.
+# ---------------------------------------------------------------------------
+timing:
+  pre_window_end_day: 2        # days 0-2   -> PRE_WINDOW  (organic activation still peaking)
+  window_start_day: 3          # days 3-10  -> IN_WINDOW   (intervention window)
+  window_end_day: 10
+  late_end_day: 14             # days 11-14 -> LATE        (last useful attempt)
+                               # day 15+    -> DORMANT     (only 8.4% of activations land later)
+  label_horizon_days: 30
+
+# ---------------------------------------------------------------------------
+# Treatment matrix — band x timing state.
+# UPPER never receives a paid incentive: the PRD do-no-harm guardrail is
+# enforced here by the pipeline, not left to the policy layer to remember.
+# ---------------------------------------------------------------------------
+treatment_matrix:
+  LOWER:
+    PRE_WINDOW: NO_CONTACT
+    IN_WINDOW: COACH_INCENTIVE
+    LATE: COACH_INCENTIVE
+    DORMANT: NO_CONTACT
+  MIDDLE:
+    PRE_WINDOW: NO_CONTACT
+    IN_WINDOW: COACH          # primary MVP 2 target
+    LATE: COACH
+    DORMANT: NO_CONTACT
+  UPPER:
+    PRE_WINDOW: NO_CONTACT
+    IN_WINDOW: NO_CONTACT
+    LATE: COACH               # neutral copy, no incentive
+    DORMANT: NO_CONTACT
+
+primary_target:
+  band: MIDDLE
+  timing_state: IN_WINDOW
+
+# ---------------------------------------------------------------------------
+# Suppression — evaluated after band and state assignment.
+# Any rule firing sets treatment_state = SUPPRESSED with suppression_reason.
+# ---------------------------------------------------------------------------
+suppression:
+  no_incentive_for_bands: ["UPPER"]
+  frequency_cap_hours: 72
+  lifetime_exposure_cap: 3
+  suppress_timing_states: ["PRE_WINDOW", "DORMANT"]
+  max_dismissals: 2
+  suppress_on_active_support_contact: true
+
+# ---------------------------------------------------------------------------
+# Holdout — deterministic, from a stable hash of customer_id.
+# Not a runtime random draw: the same customer must land in the same arm on
+# every scoring run and the assignment must be reconstructible afterwards.
+# Spread evenly across all three bands so the push effect is readable within
+# each band rather than only in aggregate.
+# ---------------------------------------------------------------------------
+holdout:
+  share: 0.20
+  strategy: stable_hash_mod_100
+  hash_key_column: customer_id
+  stratify_by: profile_band
+  share_tolerance: 0.01
+
+# ---------------------------------------------------------------------------
+# Scoring population and feature contract.
+# ---------------------------------------------------------------------------
+population:
+  filter: "completed_onboarding = true"
+  expected_scored_rows: 115192
+  total_signups: 260000
+  scoring_point: account_created   # day 0; score is fixed for the treatment window
+
+features:
+  signup_time:
+    - age
+    - signup_hour
+    - signup_dow
+    - acquisition_channel
+    - device_os
+    - app_version
+    - app_version_ordinal
+    - state
+    - prev_bank_relationship
+    - referred_by_customer        # perfect duplicate of acquisition_channel = referral
+  onboarding_behaviour:
+    - selfie_attempts
+    - n_retry_rows
+    - wall_clock_seconds
+    - total_ms_step_1
+    - total_ms_step_2
+    - total_ms_step_5
+    - total_ms_step_6
+    - total_ms_step_7
+    - log_ms_step_3
+    - log_ms_step_4
+    - log_total_ms
+
+# Hard constraint. Presence of any of these in the scoring input fails the
+# pipeline. Leakage verified against the Parquet files: zero violations in
+# either direction across 260,000 rows.
+forbidden_features:
+  - days_to_first_transaction     # null iff activated_30d is false
+  - first_transaction_ts          # same relationship
+  - completed_onboarding          # population filter; constant in-population
+  - steps_completed               # same fact; equals 7 for all in-population
+  - max_step_reached              # constant 7 in-population
+  - abandoned_at_step             # constant null in-population
+  - attempts_step_1
+  - attempts_step_2
+  - attempts_step_3
+  - attempts_step_5
+  - attempts_step_6
+  - attempts_step_7               # all constant 1 - only step 4 has retries
+  - n_event_rows                  # deterministic function of n_retry_rows
+  - customer_id                   # identifier
+  - signup_ts                     # used only to build the temporal split
+  - first_event_ts
+  - last_event_ts                 # captured by wall_clock_seconds
+
+# ---------------------------------------------------------------------------
+# Event aggregation. onboarding_events holds 1,386,264 rows for 260,000
+# customers because selfie_liveness allows retries. Aggregate to customer_id
+# grain BEFORE joining, or the join duplicates exactly the customers who
+# struggled most. ms_on_step is per attempt, so per-step time is a SUM.
+# ---------------------------------------------------------------------------
+event_aggregation:
+  grain: customer_id
+  expected_rows_after_aggregation: 260000
+  per_step_time_agg: sum
+  retry_step: selfie_liveness
+
+# ---------------------------------------------------------------------------
+# Validation split - temporal, not random. In production the model scores
+# signups that have not happened yet.
+# ---------------------------------------------------------------------------
+validation:
+  strategy: temporal
+  split_column: signup_ts
+  cutoff: "2026-06-25"
+  train_rows: 92153
+  test_rows: 23039
+  train_activation_rate: 0.43573
+  test_activation_rate: 0.42840
+  pr_auc_floor: 0.4284           # test-set prevalence, not 0.5
+  random_seed: 42
+
+# ---------------------------------------------------------------------------
+# Scale. Any per-day figure computed on this sample must be multiplied by the
+# ratio below to reach real inflow.
+# ---------------------------------------------------------------------------
+scale:
+  signup_window_start: "2026-02-01"
+  signup_window_end: "2026-07-31"
+  sample_signups_per_day: 1436
+  real_signups_per_day: 12000
+  ratio: 8.35
