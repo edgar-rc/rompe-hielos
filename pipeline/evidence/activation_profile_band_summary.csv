@@ -1,0 +1,4 @@
+profile_band,customers,mean_score,observed_activation,share,vs_average
+LOWER,38161,0.298867,0.295144,0.331282,0.679639
+MIDDLE,40595,0.434662,0.432221,0.352412,0.99529
+UPPER,36436,0.58062,0.582254,0.316307,1.340776

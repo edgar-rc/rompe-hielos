@@ -1,0 +1,9 @@
+# Core - required
+pandas>=2.0
+numpy>=1.24
+pyyaml>=6.0
+
+# Parquet engine - required to read the delivered .parquet files.
+# Without it the pipeline falls back to CSV, then to the seeded generator
+# (see pipeline/src/io.py).
+pyarrow>=14.0
