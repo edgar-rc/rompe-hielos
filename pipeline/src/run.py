@@ -211,12 +211,20 @@ def main() -> int:
                  100 * train["activated_30d"].mean(), f"{len(test):,}",
                  100 * test["activated_30d"].mean())
 
-        X_all, names = ft.feature_matrix(pop, forbidden)
         y_all = pop["activated_30d"].astype(float).to_numpy()
-        X_train, y_train = X_all[train_mask.to_numpy()], y_all[train_mask.to_numpy()]
-        X_test, y_test = X_all[~train_mask.to_numpy()], y_all[~train_mask.to_numpy()]
+        y_train = y_all[train_mask.to_numpy()]
+        y_test = y_all[~train_mask.to_numpy()]
 
-        log.info("  Design matrix: %d features", len(names))
+        # Fit scale and category levels on train only. Applying those
+        # statistics to test (and to the full scored population) is what
+        # makes the temporal split actually temporal.
+        encoder = ft.fit_feature_encoder(train, forbidden)
+        X_train = ft.transform_features(train, encoder)
+        X_test = ft.transform_features(test, encoder)
+        X_all = ft.transform_features(pop, encoder)
+        names = list(encoder.names)
+
+        log.info("  Design matrix: %d features (encoder fitted on train)", len(names))
         log.info("")
         log.info("  Baselines and model, evaluated on the temporal test set:")
         prevalence = np.full(len(y_test), y_train.mean())
@@ -254,8 +262,23 @@ def main() -> int:
     ).floor("s")
     log.info("  as_of = %s", as_of)
 
-    scores_in = pop[["customer_id", "activation_score", "account_created_ts"]].copy()
-    scores_in["activated_before_as_of"] = False
+    if "first_transaction_ts" not in labels.columns:
+        raise SystemExit(
+            "activation_labels is missing first_transaction_ts; "
+            "cannot resolve activated_before_as_of."
+        )
+    scores_in = pop[["customer_id", "activation_score", "account_created_ts"]].merge(
+        labels[["customer_id", "first_transaction_ts"]], on="customer_id", how="left"
+    )
+    txn_ts = pd.to_datetime(scores_in["first_transaction_ts"], errors="coerce")
+    scores_in["activated_before_as_of"] = txn_ts.notna() & (txn_ts.dt.floor("s") <= as_of)
+    n_already = int(scores_in["activated_before_as_of"].sum())
+    log.info(
+        "  Already transacted as of as_of: %s of %s (%.2f%%) - NO_CONTACT",
+        f"{n_already:,}", f"{len(scores_in):,}", 100 * n_already / len(scores_in),
+    )
+    # Drop the leakage column before it reaches the profile builder.
+    scores_in = scores_in.drop(columns=["first_transaction_ts"])
     profile = ap.build_activation_profile(
         scores_in, cfg, as_of=as_of, score_source=score_source
     )
